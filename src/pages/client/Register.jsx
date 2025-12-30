@@ -18,11 +18,16 @@ import {
     Avatar,
     IconButton,
 } from '@mui/material';
-import { User, Store, Upload, ArrowLeft } from 'lucide-react';
+import { User, Store, Upload, ArrowLeft, Mail, CheckCircle, XCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 
 const steps = ['Select Role', 'Account Details', 'Complete'];
+
+// Email validation regex pattern
+const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+// Password validation regex pattern (minimum 8 chars, at least one letter and one number)
+const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$/;
 
 const Register = () => {
     const navigate = useNavigate();
@@ -45,30 +50,203 @@ const Register = () => {
         profileImage: null,
     });
 
+    const [validationErrors, setValidationErrors] = useState({
+        email: '',
+        password: '',
+        confirmPassword: '',
+        phone: '',
+    });
+
+    const [touchedFields, setTouchedFields] = useState({
+        email: false,
+        password: false,
+        confirmPassword: false,
+        phone: false,
+    });
+
     // Set role from URL when component loads
     useEffect(() => {
         setFormData(prev => ({ ...prev, role: roleFromUrl }));
     }, [roleFromUrl]);
+
+    // Validate email
+    const validateEmail = (email) => {
+        if (!email) return 'Email is required';
+        if (!emailRegex.test(email)) return 'Please enter a valid email address';
+        if (email.length > 254) return 'Email is too long';
+        return '';
+    };
+
+    // Validate password
+    const validatePassword = (password) => {
+        if (!password) return 'Password is required';
+        if (password.length < 8) return 'Password must be at least 8 characters';
+        if (!passwordRegex.test(password)) return 'Password must contain at least one letter and one number';
+        return '';
+    };
+
+    // Validate confirm password
+    const validateConfirmPassword = (confirmPassword) => {
+        if (!confirmPassword) return 'Please confirm your password';
+        if (confirmPassword !== formData.password) return 'Passwords do not match';
+        return '';
+    };
+
+    // Validate phone number (optional, but validate if provided)
+    const validatePhone = (phone) => {
+        if (!phone) return ''; // Phone is optional
+       const phoneRegex = /^[+]?[1-9][\d]{0,15}$/;
+       if (!phoneRegex.test(phone.replace(/[\s\-()]/g, ''))) {
+            return 'Please enter a valid phone number';
+        }
+        return '';
+    };
+
+    // Handle field change with validation
+    const handleFieldChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+        
+        // Validate immediately if field has been touched
+        if (touchedFields[field]) {
+            let error = '';
+            switch (field) {
+                case 'email':
+                    error = validateEmail(value);
+                    break;
+                case 'password':
+                    error = validatePassword(value);
+                    // Also re-validate confirm password if password changes
+                    if (touchedFields.confirmPassword) {
+                        setValidationErrors(prev => ({
+                            ...prev,
+                            confirmPassword: validateConfirmPassword(formData.confirmPassword)
+                        }));
+                    }
+                    break;
+                case 'confirmPassword':
+                    error = validateConfirmPassword(value);
+                    break;
+                case 'phone':
+                    error = validatePhone(value);
+                    break;
+                default:
+                    break;
+            }
+            setValidationErrors(prev => ({ ...prev, [field]: error }));
+        }
+    };
+
+    // Handle field blur (when user leaves the field)
+    const handleFieldBlur = (field) => {
+        setTouchedFields(prev => ({ ...prev, [field]: true }));
+        
+        let error = '';
+        switch (field) {
+            case 'email':
+                error = validateEmail(formData.email);
+                break;
+            case 'password':
+                error = validatePassword(formData.password);
+                break;
+            case 'confirmPassword':
+                error = validateConfirmPassword(formData.confirmPassword);
+                break;
+            case 'phone':
+                error = validatePhone(formData.phone);
+                break;
+            default:
+                break;
+        }
+        setValidationErrors(prev => ({ ...prev, [field]: error }));
+    };
+
+    // Check if all fields in current step are valid
+    const isStepValid = () => {
+        if (activeStep === 1) {
+            const errors = {
+                email: validateEmail(formData.email),
+                password: validatePassword(formData.password),
+                confirmPassword: validateConfirmPassword(formData.confirmPassword),
+                phone: validatePhone(formData.phone),
+            };
+            
+            // Check if there are any validation errors
+            const hasErrors = Object.values(errors).some(error => error !== '');
+            
+            // Check required fields
+            if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
+                return false;
+            }
+            
+            // Check seller-specific required field
+            if (formData.role === 'seller' && !formData.shopName) {
+                return false;
+            }
+            
+            return !hasErrors;
+        }
+        return true;
+    };
 
     const handleNext = () => {
         if (activeStep === 0 && !formData.role) {
             toast.error('Please select a role');
             return;
         }
+        
         if (activeStep === 1) {
-            if (!formData.name || !formData.email || !formData.password) {
-                toast.error('Please fill all required fields');
+            // Mark all fields as touched to show errors
+            setTouchedFields({
+                email: true,
+                password: true,
+                confirmPassword: true,
+                phone: true,
+            });
+            
+            // Validate all fields
+            const errors = {
+                email: validateEmail(formData.email),
+                password: validatePassword(formData.password),
+                confirmPassword: validateConfirmPassword(formData.confirmPassword),
+                phone: validatePhone(formData.phone),
+            };
+            
+            setValidationErrors(errors);
+            
+            // Check for errors
+            const hasErrors = Object.values(errors).some(error => error !== '');
+            
+            if (!formData.name) {
+                toast.error('Please enter your name');
                 return;
             }
-            if (formData.password !== formData.confirmPassword) {
-                toast.error('Passwords do not match');
+            
+            if (!formData.email) {
+                toast.error('Please enter your email');
                 return;
             }
+            
+            if (!formData.password) {
+                toast.error('Please enter a password');
+                return;
+            }
+            
+            if (!formData.confirmPassword) {
+                toast.error('Please confirm your password');
+                return;
+            }
+            
+            if (hasErrors) {
+                toast.error('Please fix the validation errors');
+                return;
+            }
+            
             if (formData.role === 'seller' && !formData.shopName) {
                 toast.error('Please enter your shop name');
                 return;
             }
         }
+        
         setActiveStep(prevStep => prevStep + 1);
     };
 
@@ -100,6 +278,21 @@ const Register = () => {
             navigate('/home');
         }
     };
+
+    // Helper component for validation feedback
+    const ValidationFeedback = ({ isValid, message }) => (
+        <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1, 
+            mt: 0.5,
+            fontSize: '0.75rem',
+            color: isValid ? '#4caf50' : '#f44336'
+        }}>
+            {isValid ? <CheckCircle size={12} /> : <XCircle size={12} />}
+            {message}
+        </Box>
+    );
 
     const getStepContent = (step) => {
         switch (step) {
@@ -216,6 +409,7 @@ const Register = () => {
                                     </Button>
                                 </Box>
                             </Grid>
+                            
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     required
@@ -223,8 +417,12 @@ const Register = () => {
                                     label="Full Name"
                                     value={formData.name}
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    error={touchedFields.name && !formData.name}
+                                    helperText={touchedFields.name && !formData.name ? 'Name is required' : ''}
+                                    onBlur={() => setTouchedFields(prev => ({ ...prev, name: true }))}
                                 />
                             </Grid>
+                            
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     required
@@ -232,9 +430,24 @@ const Register = () => {
                                     label="Email Address"
                                     type="email"
                                     value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    onChange={(e) => handleFieldChange('email', e.target.value)}
+                                    onBlur={() => handleFieldBlur('email')}
+                                    error={touchedFields.email && !!validationErrors.email}
+                                    helperText={touchedFields.email && validationErrors.email}
+                                    InputProps={{
+                                        startAdornment: (
+                                            <Mail size={20} style={{ marginRight: 8, color: '#666' }} />
+                                        ),
+                                    }}
                                 />
+                                {formData.email && touchedFields.email && !validationErrors.email && (
+                                    <ValidationFeedback 
+                                        isValid={true} 
+                                        message="Valid email address" 
+                                    />
+                                )}
                             </Grid>
+                            
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     required
@@ -242,9 +455,19 @@ const Register = () => {
                                     label="Password"
                                     type="password"
                                     value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    onChange={(e) => handleFieldChange('password', e.target.value)}
+                                    onBlur={() => handleFieldBlur('password')}
+                                    error={touchedFields.password && !!validationErrors.password}
+                                    helperText={touchedFields.password && validationErrors.password}
                                 />
+                                {formData.password && touchedFields.password && !validationErrors.password && (
+                                    <ValidationFeedback 
+                                        isValid={true} 
+                                        message="Strong password" 
+                                    />
+                                )}
                             </Grid>
+                            
                             <Grid item xs={12} md={6}>
                                 <TextField
                                     required
@@ -252,17 +475,32 @@ const Register = () => {
                                     label="Confirm Password"
                                     type="password"
                                     value={formData.confirmPassword}
-                                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                                    onChange={(e) => handleFieldChange('confirmPassword', e.target.value)}
+                                    onBlur={() => handleFieldBlur('confirmPassword')}
+                                    error={touchedFields.confirmPassword && !!validationErrors.confirmPassword}
+                                    helperText={touchedFields.confirmPassword && validationErrors.confirmPassword}
                                 />
+                                {formData.confirmPassword && touchedFields.confirmPassword && !validationErrors.confirmPassword && (
+                                    <ValidationFeedback 
+                                        isValid={true} 
+                                        message="Passwords match" 
+                                    />
+                                )}
                             </Grid>
+                            
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth
                                     label="Phone Number"
                                     value={formData.phone}
-                                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                    onChange={(e) => handleFieldChange('phone', e.target.value)}
+                                    onBlur={() => handleFieldBlur('phone')}
+                                    error={touchedFields.phone && !!validationErrors.phone}
+                                    helperText={touchedFields.phone && validationErrors.phone}
+                                    placeholder="+1 (555) 123-4567"
                                 />
                             </Grid>
+                            
                             <Grid item xs={12}>
                                 <TextField
                                     fullWidth
@@ -271,6 +509,7 @@ const Register = () => {
                                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                                     multiline
                                     rows={2}
+                                    placeholder="Street, City, State, ZIP Code"
                                 />
                             </Grid>
                             
@@ -289,6 +528,9 @@ const Register = () => {
                                             label="Shop Name"
                                             value={formData.shopName}
                                             onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
+                                            error={touchedFields.shopName && !formData.shopName}
+                                            helperText={touchedFields.shopName && !formData.shopName ? 'Shop name is required for sellers' : ''}
+                                            onBlur={() => setTouchedFields(prev => ({ ...prev, shopName: true }))}
                                         />
                                     </Grid>
                                     <Grid item xs={12}>
@@ -305,6 +547,42 @@ const Register = () => {
                                 </>
                             )}
                         </Grid>
+                        
+                        {/* Password Requirements Info */}
+                        <Paper sx={{ p: 2, mt: 3, bgcolor: '#f5f5f5', borderRadius: 2 }}>
+                            <Typography variant="body2" fontWeight="bold" gutterBottom>
+                                Password Requirements:
+                            </Typography>
+                            <Grid container spacing={1}>
+                                <Grid item xs={6} md={3}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {formData.password.length >= 8 ? 
+                                            <CheckCircle size={14} color="#4caf50" /> : 
+                                            <XCircle size={14} color="#f44336" />
+                                        }
+                                        <Typography variant="caption">8+ characters</Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid item xs={6} md={3}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {/[A-Za-z]/.test(formData.password) ? 
+                                            <CheckCircle size={14} color="#4caf50" /> : 
+                                            <XCircle size={14} color="#f44336" />
+                                        }
+                                        <Typography variant="caption">One letter</Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid item xs={6} md={3}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {/\d/.test(formData.password) ? 
+                                            <CheckCircle size={14} color="#4caf50" /> : 
+                                            <XCircle size={14} color="#f44336" />
+                                        }
+                                        <Typography variant="caption">One number</Typography>
+                                    </Box>
+                                </Grid>
+                            </Grid>
+                        </Paper>
                     </Box>
                 );
 
@@ -328,7 +606,14 @@ const Register = () => {
                                 </Grid>
                                 <Grid item xs={12} sm={6}>
                                     <Typography variant="subtitle2" color="text.secondary">Email:</Typography>
-                                    <Typography variant="body1">{formData.email}</Typography>
+                                    <Typography variant="body1">
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {formData.email}
+                                            {emailRegex.test(formData.email) && 
+                                                <CheckCircle size={16} color="#4caf50" />
+                                            }
+                                        </Box>
+                                    </Typography>
                                 </Grid>
                                 <Grid item xs={12} sm={6}>
                                     <Typography variant="subtitle2" color="text.secondary">Phone:</Typography>
@@ -419,9 +704,13 @@ const Register = () => {
                             <Button
                                 variant="contained"
                                 onClick={handleNext}
+                                disabled={activeStep === 1 && !isStepValid()}
                                 sx={{
                                     bgcolor: '#d2a83d',
-                                    '&:hover': { bgcolor: '#b67d1a' }
+                                    '&:hover': { bgcolor: '#b67d1a' },
+                                    '&.Mui-disabled': {
+                                        bgcolor: '#e0e0e0'
+                                    }
                                 }}
                             >
                                 Continue
